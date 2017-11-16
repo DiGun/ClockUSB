@@ -52,6 +52,19 @@ typedef struct {
 
 RTCTIME tm;
 
+
+void NumbToUART(uint32_t number)
+{
+	char s[10];
+	char* c;
+	c=ultoa(number,s,10);
+	while(c[0])
+	{
+		uart_putc_w(c[0]);
+		c++;
+	}
+}
+
 /*------------------------------------------*/
 /* Convert time structure to timeticks      */
 /*------------------------------------------*/
@@ -59,27 +72,29 @@ RTCTIME tm;
 uint32_t Time2Unix(const RTCTIME *rtc)
 {
 	uint32_t utc, i, y;
+
+
 	y = rtc->year - 1970;
 	if (y > 2106 || !rtc->month || !rtc->mday) return 0;
 
 	utc = y / 4 * 1461; y %= 4;
 	utc += y * 365 + (y > 2 ? 1 : 0);
-	for (i = 0; i < 12 && i + 1 < rtc->month; i++) {
+	
+	for (i = 0; i < 12 && i + 1 < rtc->month; i++) 
+	{
 		utc += numofdays[i];
 		if (i == 1 && y == 2) utc++;
 	}
+	
+	utc *= 86400;
+	return utc;
+	
 	utc += rtc->mday - 1;
 	utc *= 86400;
-//	if(timetype==time_midnight)
-//	{
-//		return utc;
-//	}
-//	else if(timetype==time_current)
-	{
-		utc += rtc->hour * 3600 + rtc->min * 60 + rtc->sec;
-		return utc;
-	}
-//	else return 0;
+	utc += rtc->hour * 3600 + rtc->min * 60 + rtc->sec;
+
+//	utc -= (long)(_RTC_TDIF * 3600);
+	return utc;
 }
 
 /*------------------------------------------*/
@@ -119,21 +134,6 @@ void Unix2Time(uint32_t utc, RTCTIME *rtc)
 	}
 	rtc->month = (uint8_t)(1 + i);
 	rtc->mday = (uint8_t)(1 + utc);
-}
-
-
-
-
-void NumbToUART(uint32_t number)
-{
-			char s[10];
-			char* c;
-			c=ultoa(number,s,10);
-			while(c[0])
-			{
-				uart_putc_w(c[0]);
-				c++;
-			}
 }
 
 
@@ -224,13 +224,13 @@ int main(void)
 //		setDisplayDigit(1, 3, 0);
 		uart_puts_P(PSTR("MCU"));
 		uart_putln();
-		time=1510841437;
+		time=1510841438;
 //		time+=TIME_ZONE;
 		NumbToUART(time);
+		uart_putln();
 //		time=1514764825;
 //		time=1483228799;
 //		time=1483228801;
-//		uart_putln();
 //		_delay_ms(200);
 
 			Unix2Time(time,&tm);
@@ -255,6 +255,7 @@ int main(void)
 
 		NumbToUART(tm.wday);
 		uart_putln();
+		uart_putln();
 	
 			
 		time=Time2Unix(&tm);
@@ -263,8 +264,38 @@ int main(void)
 //			NumbToUART(tmtmp.tm_year);
 //			time= mktime(&tmtmp);
 //			NumbToUART(time);
-//			uart_putln();
+			uart_putln();
 //		_delay_ms(200);
+
+
+			Unix2Time(time,&tm);
+			setDisplayToDecNumberAt(tm.sec,0b01010100,1,2,1);
+			NumbToUART(tm.sec);
+			uart_putln();
+			setDisplayToDecNumberAt(tm.min,0b01010100,3,2,1);
+			NumbToUART(tm.min);
+			uart_putln();
+			setDisplayToDecNumberAt(tm.hour,0b01010100,5,2,1);
+			NumbToUART(tm.hour);
+			uart_putln();
+			setDisplayToDecNumberAt(tm.mday,0b01010100,7,2,1);
+			NumbToUART(tm.mday);
+			uart_putln();
+			
+			NumbToUART(tm.month);
+			uart_putln();
+			
+			NumbToUART(tm.year);
+			uart_putln();
+
+			NumbToUART(tm.wday);
+			uart_putln();
+			uart_putln();
+
+
+
+
+
     while(1)
     {
 				if ((uart_getc(&c))==0)
