@@ -37,189 +37,92 @@ void Init()
 
 uint32_t time;
 
-#define TIME_ZONE -2 * 60*60
+#define TIME_ZONE 2 * 60*60
+static const uint8_t numofdays[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+	
+typedef struct {
+	uint16_t   year;   /* 1970..2106 */
+	uint8_t      month;   /* 1..12 */
+	uint8_t      mday;   /* 1..31 */
+	uint8_t      hour;   /* 0..23 */
+	uint8_t      min;   /* 0..59 */
+	uint8_t      sec;   /* 0..59 */
+	uint8_t      wday;   /* 0..6 (Sun..Sat) */
+} RTCTIME;
 
-struct tm {
-	int8_t tm_sec;
-	int8_t tm_min;
-	int8_t tm_hour;
-	int8_t tm_mday;
-	int8_t tm_mon;
-	int16_t tm_year;
-	int8_t tm_wday;
-	int16_t tm_yday;
-	int8_t tm_isdst;
-};
+RTCTIME tm;
 
-struct tm tmtmp;
+/*------------------------------------------*/
+/* Convert time structure to timeticks      */
+/*------------------------------------------*/
 
-
-#define YEAR0                   1900
-#define EPOCH_YR                1970
-#define SECS_DAY                (24L * 60L * 60L)
-#define LEAPYEAR(year)          (!((year) % 4) && (((year) % 100) || !((year) % 400)))
-#define YEARSIZE(year)          (LEAPYEAR(year) ? 366 : 365)
-
-#define TIME_MAX                2147483647L
-#define	_timezone	TIME_ZONE
-#define	_daylight	0
-#define	_dstbias	0
-
-// long _timezone = 0;                 // Difference in seconds between GMT and local time
-// int _daylight = 0;                  // Non-zero if daylight savings time is used
-// long _dstbias = 0;                  // Offset for Daylight Saving Time
-
-const int _ytab[2][12] = {
-{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
-{31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
-};
-
-struct tm gmtime(uint32_t timer)
+uint32_t Time2Unix(const RTCTIME *rtc)
 {
-	uint32_t time = timer;
-	unsigned long dayclock, dayno;
-	struct tm tmbuf;
-	
-	int year = EPOCH_YR;
+	uint32_t utc, i, y;
+	y = rtc->year - 1970;
+	if (y > 2106 || !rtc->month || !rtc->mday) return 0;
 
-	dayclock = (unsigned long) time % SECS_DAY;
-	dayno = (unsigned long) time / SECS_DAY;
-
-	tmbuf.tm_sec = dayclock % 60;
-	tmbuf.tm_min = (dayclock % 3600) / 60;
-	tmbuf.tm_hour = dayclock / 3600;
-	tmbuf.tm_wday = (dayno + 4) % 7; // Day 0 was a thursday
-	while (dayno >= (unsigned long) YEARSIZE(year)) 
-	{
-		dayno -= YEARSIZE(year);
-		year++;
+	utc = y / 4 * 1461; y %= 4;
+	utc += y * 365 + (y > 2 ? 1 : 0);
+	for (i = 0; i < 12 && i + 1 < rtc->month; i++) {
+		utc += numofdays[i];
+		if (i == 1 && y == 2) utc++;
 	}
-	tmbuf.tm_year = year ; //- YEAR0;
-	tmbuf.tm_yday = dayno;
-	tmbuf.tm_mon = 1;
-	while (dayno >= (unsigned long) _ytab[LEAPYEAR(year)][tmbuf.tm_mon]) 
+	utc += rtc->mday - 1;
+	utc *= 86400;
+//	if(timetype==time_midnight)
+//	{
+//		return utc;
+//	}
+//	else if(timetype==time_current)
 	{
-		dayno -= _ytab[LEAPYEAR(year)][tmbuf.tm_mon];
-		tmbuf.tm_mon++;
+		utc += rtc->hour * 3600 + rtc->min * 60 + rtc->sec;
+		return utc;
 	}
-	tmbuf.tm_mday = dayno;
-	setDisplayToDecNumberAt(tmbuf.tm_mday,0b01010100,3,2,1);
-	setDisplayToDecNumberAt(tmbuf.tm_mon,0b01010100,5,2,1);
-
-	
-	
-	
-	tmbuf.tm_isdst = 0;
-
-	return tmbuf;
+//	else return 0;
 }
 
-uint32_t mktime(struct tm *tmbuf) {
-	long day, year;
-	int tm_year;
-	int yday, month;
-	/*unsigned*/ long seconds;
-	int overflow;
-	long dst;
+/*------------------------------------------*/
+/* Get time in calendar form                */
+/*------------------------------------------*/
 
-	tmbuf->tm_min += tmbuf->tm_sec / 60;
-	tmbuf->tm_sec %= 60;
-	if (tmbuf->tm_sec < 0) {
-		tmbuf->tm_sec += 60;
-		tmbuf->tm_min--;
+void Unix2Time(uint32_t utc, RTCTIME *rtc)
+{
+	uint32_t n,i,d;
+//	utc = RTC_GetCounter();
+	/* Compute  hours */
+//	if(timetype==time_current)
+	{
+		rtc->sec = (uint8_t)(utc % 60); utc /= 60;
+		rtc->min = (uint8_t)(utc % 60); utc /= 60;
+		rtc->hour = (uint8_t)(utc % 24); utc /= 24;
 	}
-	tmbuf->tm_hour += tmbuf->tm_min / 60;
-	tmbuf->tm_min = tmbuf->tm_min % 60;
-	if (tmbuf->tm_min < 0) {
-		tmbuf->tm_min += 60;
-		tmbuf->tm_hour--;
+/*	
+	if(timetype==time_midnight)
+	{
+		rtc->sec = 0;
+		rtc->min = 0;
+		rtc->hour = 0;
+		utc/=86400;
 	}
-	day = tmbuf->tm_hour / 24;
-	tmbuf->tm_hour= tmbuf->tm_hour % 24;
-	if (tmbuf->tm_hour < 0) {
-		tmbuf->tm_hour += 24;
-		day--;
+*/	
+	rtc->wday = (uint8_t)((utc + 4) % 7);
+	rtc->year = (uint16_t)(1970 + utc / 1461 * 4); utc %= 1461;
+	n = ((utc >= 1096) ? utc - 1 : utc) / 365;
+	rtc->year += n;
+	utc -= n * 365 + (n > 2 ? 1 : 0);
+	for (i = 0; i < 12; i++) {
+		d = numofdays[i];
+		if (i == 1 && n == 2) d++;
+		if (utc < d) break;
+		utc -= d;
 	}
-	tmbuf->tm_year += tmbuf->tm_mon / 12;
-	tmbuf->tm_mon %= 12;
-	if (tmbuf->tm_mon < 0) {
-		tmbuf->tm_mon += 12;
-		tmbuf->tm_year--;
-	}
-	day += (tmbuf->tm_mday - 1);
-	while (day < 0) {
-		if(--tmbuf->tm_mon < 0) {
-			tmbuf->tm_year--;
-			tmbuf->tm_mon = 11;
-		}
-		day += _ytab[LEAPYEAR(YEAR0 + tmbuf->tm_year)][tmbuf->tm_mon];
-	}
-	while (day >= _ytab[LEAPYEAR(YEAR0 + tmbuf->tm_year)][tmbuf->tm_mon]) {
-		day -= _ytab[LEAPYEAR(YEAR0 + tmbuf->tm_year)][tmbuf->tm_mon];
-		if (++(tmbuf->tm_mon) == 12) {
-			tmbuf->tm_mon = 0;
-			tmbuf->tm_year++;
-		}
-	}
-	tmbuf->tm_mday = day + 1;
-	year = EPOCH_YR;
-	if (tmbuf->tm_year < year - YEAR0) return (uint32_t) -1;
-	seconds = 0;
-	day = 0;                      // Means days since day 0 now
-	overflow = 0;
-
-	// Assume that when day becomes negative, there will certainly
-	// be overflow on seconds.
-	// The check for overflow needs not to be done for leapyears
-	// divisible by 400.
-	// The code only works when year (1970) is not a leapyear.
-	tm_year = tmbuf->tm_year + YEAR0;
-
-	if (TIME_MAX / 365 < tm_year - year) overflow++;
-	day = (tm_year - year) * 365;
-	if (TIME_MAX - day < (tm_year - year) / 4 + 1) overflow++;
-	day += (tm_year - year) / 4 + ((tm_year % 4) && tm_year % 4 < year % 4);
-	day -= (tm_year - year) / 100 + ((tm_year % 100) && tm_year % 100 < year % 100);
-	day += (tm_year - year) / 400 + ((tm_year % 400) && tm_year % 400 < year % 400);
-
-	yday = month = 0;
-	while (month < tmbuf->tm_mon) {
-		yday += _ytab[LEAPYEAR(tm_year)][month];
-		month++;
-	}
-	yday += (tmbuf->tm_mday - 1);
-	if (day + yday < 0) overflow++;
-	day += yday;
-
-	tmbuf->tm_yday = yday;
-	tmbuf->tm_wday = (day + 4) % 7;               // Day 0 was thursday (4)
-
-	seconds = ((tmbuf->tm_hour * 60L) + tmbuf->tm_min) * 60L + tmbuf->tm_sec;
-
-	if ((TIME_MAX - seconds) / SECS_DAY < day) overflow++;
-	seconds += day * SECS_DAY;
-
-	// Now adjust according to timezone and daylight saving time
-	if (((_timezone > 0) && (TIME_MAX - _timezone < seconds)) ||
-	((_timezone < 0) && (seconds < -_timezone))) {
-		overflow++;
-	}
-	seconds += _timezone;
-
-	if (tmbuf->tm_isdst) {
-		dst = _dstbias;
-	} else {
-		dst = 0;
-	}
-
-	if (dst > seconds) overflow++;        // dst is always non-negative
-	seconds -= dst;
-
-	if (overflow) return (uint32_t) -1;
-
-	if ((uint32_t) seconds != seconds) return (uint32_t) -1;
-	return (uint32_t) seconds;
+	rtc->month = (uint8_t)(1 + i);
+	rtc->mday = (uint8_t)(1 + utc);
 }
+
+
+
 
 void NumbToUART(uint32_t number)
 {
@@ -318,18 +221,45 @@ int main(void)
 		PORTC&=~(1<<PC5);
 		Init();
 		clearDisplay();
-		setDisplayDigit(1, 3, 0);
-//		uart_puts_P(PSTR("MCU"));
-//		uart_putln();
-//		time=1510824697;
+//		setDisplayDigit(1, 3, 0);
+		uart_puts_P(PSTR("MCU"));
+		uart_putln();
+		time=1510841437;
+//		time+=TIME_ZONE;
+		NumbToUART(time);
 //		time=1514764825;
 //		time=1483228799;
-		time=1483228801;
-//		NumbToUART(time);
+//		time=1483228801;
 //		uart_putln();
 //		_delay_ms(200);
 
-			tmtmp =gmtime(time);
+			Unix2Time(time,&tm);
+							setDisplayToDecNumberAt(tm.sec,0b01010100,1,2,1);
+		NumbToUART(tm.sec);
+		uart_putln();
+							setDisplayToDecNumberAt(tm.min,0b01010100,3,2,1);
+		NumbToUART(tm.min);
+		uart_putln();
+							setDisplayToDecNumberAt(tm.hour,0b01010100,5,2,1);
+		NumbToUART(tm.hour);
+		uart_putln();
+							setDisplayToDecNumberAt(tm.mday,0b01010100,7,2,1);
+		NumbToUART(tm.mday);
+		uart_putln();
+			
+		NumbToUART(tm.month);
+		uart_putln();
+			
+		NumbToUART(tm.year);
+		uart_putln();
+
+		NumbToUART(tm.wday);
+		uart_putln();
+	
+			
+		time=Time2Unix(&tm);
+//		time-=TIME_ZONE;			
+		NumbToUART(time);
 //			NumbToUART(tmtmp.tm_year);
 //			time= mktime(&tmtmp);
 //			NumbToUART(time);
