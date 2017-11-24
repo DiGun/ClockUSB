@@ -433,7 +433,6 @@ int main(void)
 //		setDisplayDigit(1, 3, 0);
 		uart_puts_P(PSTR("MCU"));
 		uart_putln();
-//		time=1514764825;
 		time=1510841438;
 		number =0;
 //		time+=TIME_ZONE;
